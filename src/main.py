@@ -3,7 +3,7 @@ import sys
 # DON'T CHANGE THIS !!!
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from flask import Flask, Response, send_from_directory
+from flask import Flask, Response, request, send_from_directory
 from flask_cors import CORS
 from src.models.user import db
 from src.routes.user import user_bp
