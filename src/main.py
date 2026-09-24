@@ -3,7 +3,7 @@ import sys
 # DON'T CHANGE THIS !!!
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from flask import Flask, send_from_directory
+from flask import Flask, Response, send_from_directory
 from flask_cors import CORS
 from src.models.user import db
 from src.routes.user import user_bp
@@ -76,7 +76,27 @@ def serve(path):
     else:
         index_path = os.path.join(static_folder_path, 'index.html')
         if os.path.exists(index_path):
-            return send_from_directory(static_folder_path, 'index.html')
+            # TEMPORARY: body-based diagnostic. Response headers set by a WSGI
+            # wrapper never reached the client, so the received request is written
+            # into the page itself, where nothing can filter it out.
+            import base64
+            import json
+            diag = {
+                'route_arg_path': path,
+                'PATH_INFO': request.environ.get('PATH_INFO'),
+                'SCRIPT_NAME': request.environ.get('SCRIPT_NAME'),
+                'QUERY_STRING': request.environ.get('QUERY_STRING'),
+                'RAW_URI': request.environ.get('RAW_URI'),
+                'headers': dict(request.headers),
+            }
+            blob = base64.b64encode(
+                json.dumps(diag, ensure_ascii=False).encode('utf-8')
+            ).decode('ascii')
+            with open(index_path, encoding='utf-8') as fh:
+                html = fh.read()
+            return Response(
+                f'{html}\n<!--DIAG:{blob}:DIAG-->\n', mimetype='text/html'
+            )
         else:
             return "index.html not found", 404
 
