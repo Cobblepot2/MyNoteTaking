@@ -88,6 +88,8 @@ celerybeat-schedule
 # dotenv
 .env
 .env.*
+# ...but keep the template so the required variables are documented
+!.env.example
 
 # mypy
 .mypy_cache/

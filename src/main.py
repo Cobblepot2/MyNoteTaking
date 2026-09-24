@@ -10,8 +10,15 @@ from src.routes.user import user_bp
 from src.routes.note import note_bp
 from src.models.note import Note
 
+# Load .env for local development. On Vercel the vars come from the platform.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
+except ImportError:
+    pass
+
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
-app.config['SECRET_KEY'] = 'asdf#FGSgvasgf$5$WGT'
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'asdf#FGSgvasgf$5$WGT')
 
 # Enable CORS for all routes
 CORS(app)
@@ -19,14 +26,35 @@ CORS(app)
 # register blueprints
 app.register_blueprint(user_bp, url_prefix='/api')
 app.register_blueprint(note_bp, url_prefix='/api')
-# configure database to use repository-root `database/app.db`
-ROOT_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-DB_PATH = os.path.join(ROOT_DIR, 'database', 'app.db')
-# ensure database directory exists
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+# Configure the database. Supabase (Postgres) in the cloud via DATABASE_URL,
+# local SQLite file as a fallback so the app still runs without any setup.
+DATABASE_URL = os.getenv('DATABASE_URL')
 
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
+if DATABASE_URL:
+    # Supabase hands out either `postgres://` or `postgresql://`; SQLAlchemy needs
+    # the driver spelled out explicitly.
+    if DATABASE_URL.startswith('postgres://'):
+        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql+psycopg2://', 1)
+    elif DATABASE_URL.startswith('postgresql://'):
+        DATABASE_URL = DATABASE_URL.replace('postgresql://', 'postgresql+psycopg2://', 1)
+    db_uri = DATABASE_URL
+    # Log the host only - never the password.
+    print(f"[db] Supabase Postgres @ {db_uri.rsplit('@', 1)[-1].split('/')[0]}")
+else:
+    ROOT_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+    DB_PATH = os.path.join(ROOT_DIR, 'database', 'app.db')
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    db_uri = f"sqlite:///{DB_PATH}"
+    print('[db] DATABASE_URL not set - falling back to local SQLite')
+
+app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# Supabase drops idle connections. Without pre_ping/recycle, the first query after
+# a cold start - i.e. every request on Vercel - fails on a stale connection.
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 300,
+}
 db.init_app(app)
 with app.app_context():
     db.create_all()
