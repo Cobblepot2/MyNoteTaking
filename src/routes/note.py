@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request
 from src.models.note import Note, db
+from src.llm import LLMError, translate_note
 
 note_bp = Blueprint('note', __name__)
 
@@ -71,6 +72,29 @@ def search_notes():
     notes = Note.query.filter(
         (Note.title.contains(query)) | (Note.content.contains(query))
     ).order_by(Note.updated_at.desc()).all()
-    
+
     return jsonify([note.to_dict() for note in notes])
+
+@note_bp.route('/notes/<int:note_id>/translate', methods=['POST'])
+def translate_note_route(note_id):
+    """Translate a note's title and content into the requested language"""
+    note = Note.query.get_or_404(note_id)
+
+    data = request.get_json(silent=True) or {}
+    target_language = (data.get('target_language') or '').strip()
+    if not target_language:
+        return jsonify({'error': 'target_language is required'}), 400
+
+    try:
+        translated = translate_note(note.title, note.content, target_language)
+    except LLMError as e:
+        # 502: the upstream LLM service failed, not this app.
+        return jsonify({'error': str(e)}), 502
+
+    return jsonify({
+        'note_id': note.id,
+        'target_language': target_language,
+        'original': {'title': note.title, 'content': note.content},
+        'translated': translated,
+    })
 

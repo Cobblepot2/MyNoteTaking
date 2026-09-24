@@ -200,6 +200,83 @@
             transform: translateY(-1px);
         }
 
+        .btn-translate {
+            background: #6f42c1;
+            color: white;
+        }
+
+        .btn-translate:hover:not(:disabled) {
+            background: #5a32a3;
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .translate-bar {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            padding-top: 5px;
+            border-top: 1px solid #e1e5e9;
+        }
+
+        .lang-select {
+            padding: 8px 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.3s ease;
+        }
+
+        .lang-select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .translation-result {
+            margin-top: 25px;
+            padding: 18px 20px;
+            border-radius: 10px;
+            background: #f3f0ff;
+            border-left: 4px solid #6f42c1;
+        }
+
+        .translation-header {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #6f42c1;
+            margin-bottom: 12px;
+        }
+
+        .translation-lang {
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: 0;
+            color: #666;
+        }
+
+        .translation-title {
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .translation-content {
+            white-space: pre-wrap;
+            line-height: 1.6;
+            color: #444;
+        }
+
         .form-group {
             margin-bottom: 20px;
         }
@@ -361,7 +438,23 @@
                         <label class="form-label" for="noteContent">Content</label>
                         <textarea class="form-textarea" id="noteContent" placeholder="Start writing your note..."></textarea>
                     </div>
+
+                    <div class="translate-bar">
+                        <select class="lang-select" id="targetLang" aria-label="Target language">
+                            <option value="Chinese (Simplified)">简体中文</option>
+                            <option value="Chinese (Traditional)">繁體中文</option>
+                            <option value="English">English</option>
+                            <option value="Japanese">日本語</option>
+                            <option value="Korean">한국어</option>
+                            <option value="Spanish">Español</option>
+                            <option value="French">Français</option>
+                            <option value="German">Deutsch</option>
+                        </select>
+                        <button class="btn btn-translate" id="translateBtn">🌐 Translate</button>
+                    </div>
                 </div>
+
+                <div class="translation-result" id="translationResult" style="display: none;"></div>
 
                 <div class="empty-state" id="emptyState">
                     <h3>Welcome to NoteTaker!</h3>
@@ -390,6 +483,7 @@
                 document.getElementById('saveBtn').addEventListener('click', () => this.saveNote());
                 document.getElementById('deleteBtn').addEventListener('click', () => this.deleteNote());
                 document.getElementById('searchBox').addEventListener('input', (e) => this.searchNotes(e.target.value));
+                document.getElementById('translateBtn').addEventListener('click', () => this.translateNote());
                 
                 // Auto-save on content change (debounced)
                 let saveTimeout;
@@ -453,6 +547,7 @@
                 document.getElementById('noteTitle').value = note.title || '';
                 document.getElementById('noteContent').value = note.content || '';
                 document.getElementById('editorTitle').textContent = note.title || 'Untitled Note';
+                this.clearTranslation();
             }
 
             createNewNote() {
@@ -469,6 +564,7 @@
                 document.getElementById('noteContent').value = '';
                 document.getElementById('editorTitle').textContent = 'New Note';
                 document.getElementById('noteTitle').focus();
+                this.clearTranslation();
                 
                 // Remove active state from all notes
                 document.querySelectorAll('.note-item').forEach(item => {
@@ -488,6 +584,7 @@
                 document.getElementById('editorActions').style.display = 'none';
                 document.getElementById('editorTitle').textContent = 'Select a note to edit';
                 this.currentNote = null;
+                this.clearTranslation();
             }
 
             async saveNote(isAutoSave = false) {
@@ -570,6 +667,60 @@
                 } catch (error) {
                     this.showMessage(`Error deleting note: ${error.message}`, 'error');
                 }
+            }
+
+            async translateNote() {
+                if (!this.currentNote) return;
+
+                if (!this.currentNote.id) {
+                    this.showMessage('Save the note before translating it.', 'error');
+                    return;
+                }
+
+                const targetLanguage = document.getElementById('targetLang').value;
+                const button = document.getElementById('translateBtn');
+
+                button.disabled = true;
+                this.showMessage('Translating...', 'loading');
+
+                try {
+                    const response = await fetch(`/api/notes/${this.currentNote.id}/translate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ target_language: targetLanguage })
+                    });
+
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.error || 'Translation failed');
+
+                    this.showTranslation(data);
+                    this.hideMessage();
+                } catch (error) {
+                    this.showMessage(`Translation error: ${error.message}`, 'error');
+                } finally {
+                    button.disabled = false;
+                }
+            }
+
+            showTranslation(data) {
+                const translated = data.translated || {};
+                const container = document.getElementById('translationResult');
+
+                container.innerHTML = `
+                    <div class="translation-header">
+                        🌐 Translation
+                        <span class="translation-lang">→ ${this.escapeHtml(data.target_language || '')}</span>
+                    </div>
+                    <div class="translation-title">${this.escapeHtml(translated.title || '')}</div>
+                    <div class="translation-content">${this.escapeHtml(translated.content || '')}</div>
+                `;
+                container.style.display = 'block';
+            }
+
+            clearTranslation() {
+                const container = document.getElementById('translationResult');
+                container.innerHTML = '';
+                container.style.display = 'none';
             }
 
             searchNotes(query) {
