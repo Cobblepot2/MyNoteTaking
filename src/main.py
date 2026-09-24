@@ -57,7 +57,12 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 }
 db.init_app(app)
 with app.app_context():
-    db.create_all()
+    # Tables already exist in Supabase. On Vercel this runs on every cold start, so
+    # keep a transient database blip from crashing the whole function at import time.
+    try:
+        db.create_all()
+    except Exception as exc:
+        app.logger.warning('Skipping db.create_all(): %s', exc)
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')

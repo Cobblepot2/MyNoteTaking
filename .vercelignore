@@ -1,0 +1,11 @@
+# Never upload local secrets or the local dev environment to a deployment.
+.env
+.env.*
+!.env.example
+
+venv/
+__pycache__/
+*.py[cod]
+database/
+*.db
+tmp_*
