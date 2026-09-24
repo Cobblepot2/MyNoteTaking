@@ -5,7 +5,6 @@ api/ and forwards every request here (see vercel.json). Flask then handles routi
 including serving the front-end from src/static/.
 """
 
-import json
 import os
 import sys
 
@@ -19,35 +18,31 @@ from src.main import app  # noqa: E402  (import has to follow the sys.path fix)
 class _DiagMiddleware:
     """TEMPORARY - delete once the Vercel routing is confirmed.
 
-    Wrapping the WSGI app sits *outside* Flask, so it answers even when the rewrite
-    sends every request to the wrong route. Triggered by a request header rather than
-    a path, because the path is exactly what is in question.
+    Echoes the request as the function actually received it onto every response.
+    An earlier version of this used a request header as the trigger and never fired,
+    which says Vercel drops custom headers on the way through the rewrite - so the
+    diagnostic has to ride the response instead, needing no trigger at all.
     """
+
+    DIAG_HEADERS = ('x-diag-path', 'x-diag-script', 'x-diag-query',
+                    'x-diag-method', 'x-diag-uri')
 
     def __init__(self, wsgi_app):
         self.wsgi_app = wsgi_app
 
     def __call__(self, environ, start_response):
-        if environ.get('HTTP_X_DIAG') != '1':
-            return self.wsgi_app(environ, start_response)
+        def _start(status, headers, exc_info=None):
+            kept = [h for h in headers if h[0].lower() not in self.DIAG_HEADERS]
+            kept.extend([
+                ('X-Diag-Path', environ.get('PATH_INFO') or ''),
+                ('X-Diag-Script', environ.get('SCRIPT_NAME') or ''),
+                ('X-Diag-Query', environ.get('QUERY_STRING') or ''),
+                ('X-Diag-Method', environ.get('REQUEST_METHOD') or ''),
+                ('X-Diag-Uri', environ.get('RAW_URI') or environ.get('REQUEST_URI') or ''),
+            ])
+            return start_response(status, kept, exc_info)
 
-        payload = {
-            key: environ.get(key)
-            for key in ('PATH_INFO', 'SCRIPT_NAME', 'QUERY_STRING',
-                        'REQUEST_METHOD', 'RAW_URI', 'HTTP_HOST')
-        }
-        payload['headers'] = {
-            key[5:].replace('_', '-').lower(): value
-            for key, value in environ.items()
-            if key.startswith('HTTP_')
-        }
-
-        body = json.dumps(payload, indent=2).encode('utf-8')
-        start_response('200 OK', [
-            ('Content-Type', 'application/json'),
-            ('Content-Length', str(len(body))),
-        ])
-        return [body]
+        return self.wsgi_app(environ, _start)
 
 
 app.wsgi_app = _DiagMiddleware(app.wsgi_app)
