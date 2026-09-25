@@ -26,6 +26,17 @@ CORS(app)
 # register blueprints
 app.register_blueprint(user_bp, url_prefix='/api')
 app.register_blueprint(note_bp, url_prefix='/api')
+
+# Vercel's rewrite (see vercel.json) sends every request to /api/index/<path>, and
+# the function receives that path with the prefix still on it - Vercel forwards no
+# header carrying the original. So the API is mounted under the prefixed URL as
+# well, which is what Flask actually sees on the deployed site. Under a normal WSGI
+# server the prefix is absent and the unprefixed registrations above are used.
+VERCEL_REWRITE_PREFIX = '/api/index'
+app.register_blueprint(user_bp, url_prefix=f'{VERCEL_REWRITE_PREFIX}/api',
+                       name='user_vercel')
+app.register_blueprint(note_bp, url_prefix=f'{VERCEL_REWRITE_PREFIX}/api',
+                       name='note_vercel')
 # Configure the database. Supabase (Postgres) in the cloud via DATABASE_URL,
 # local SQLite file as a fallback so the app still runs without any setup.
 DATABASE_URL = os.getenv('DATABASE_URL')
